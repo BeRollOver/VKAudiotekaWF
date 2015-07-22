@@ -17,12 +17,12 @@ namespace VKAudiotekaWF
         public Form1()
         {
             InitializeComponent();
-            scope = Settings.Groups;
             scope = Settings.Audio;
         }
 
         VkApi vk = new VkApi();
         Settings scope;
+        VkNet.Model.User user;
         System.Collections.ObjectModel.ReadOnlyCollection<VkNet.Model.Group> groupsList;
         VkNet.Model.Group group;
         System.Collections.ObjectModel.ReadOnlyCollection<VkNet.Model.Attachments.Audio> audiosList;
@@ -35,8 +35,15 @@ namespace VKAudiotekaWF
             {
                 // Заходим в ВК
                 vk.Authorize(4919033, userText.Text, passText.Text, scope);
-                var user = vk.Users.Get((long)vk.UserId, null, null);
+                user = vk.Users.Get((long)vk.UserId, null, null);
                 enterLabel.Text = "Успешный вход";
+
+                // Получаем список собственных аудиозаписей и альбомов
+                audiosList = vk.Audio.Get(user.Id, null, null, null, null);
+                albumsList = vk.Audio.GetAlbums(user.Id, null, 0);
+                foreach (var item in albumsList)
+                    albumsListBox.Items.Add(item.Title);
+                albumsListBox.Enabled = true;
 
                 // Получаем инфу о группах
                 groupsList = vk.Groups.Get(user.Id, true, GroupsFilters.Moderator);
@@ -71,15 +78,14 @@ namespace VKAudiotekaWF
 
                 // Выбираем нужную группу, получаем список всех аудиозаписей и альбомов, выводим его
                 group = vk.Groups.GetById(groupsList[groupsListBox.SelectedIndex].Id, null);
-                audiosList = vk.Audio.GetFromGroup((long)group.Id, null, null, 0, 0);
+                audiosList = vk.Audio.GetFromGroup(group.Id, null, null, 0, 0);
                 albumsList = vk.Audio.GetAlbums(-group.Id, null, 0);
                 foreach (var item in albumsList)
                     albumsListBox.Items.Add(item.Title);
-
+                
                 // Включаем все нужные кнопки
                 if (albumsList.Count == 50) next50.Enabled = true;
                 urlidCheckBox.Enabled = true;
-                albumsListBox.Enabled = true;
             }
             catch (VkNet.Exception.AccessDeniedException)
             {
@@ -187,10 +193,13 @@ namespace VKAudiotekaWF
                     MessageBox.Show("Неправильный URL/ID");
                 }
 
+
                 // Поднимает указанный альбом на самый верх
-                var audioGroupAlbum = vk.Audio.GetFromGroup((long)group.Id,
+                var audioGroupAlbum = (group != null) ? // Определяет, вызывать метод пользователя или группы
+                    vk.Audio.GetFromGroup(group.Id,
                     urlidCheckBox.Checked ? a : Convert.ToInt32(albumsList[albumsListBox.SelectedIndex].AlbumId), //Определяет, брать альбом из списка или из textbox
-                    null, 0, 0);
+                    null, 0, 0) : 
+                vk.Audio.Get(user.Id, Convert.ToInt32(albumsList[albumsListBox.SelectedIndex].AlbumId), null, null, null);
 
                 // Лучше не двигать альбом, если он первый
                 if (audioGroupAlbum[0].Id == audiosList[0].Id)
@@ -201,10 +210,12 @@ namespace VKAudiotekaWF
 
                 // Поднимаем
                 for (int j = 0; j < audioGroupAlbum.Count(); j++)
-                    vk.Audio.Reorder(audioGroupAlbum[j].Id, -(long)group.Id, 0, audiosList[0].Id);
+                    vk.Audio.Reorder(audioGroupAlbum[j].Id, group != null ? - group.Id : user.Id, 0, audiosList[0].Id);
 
                 // Получаем новый список аудизаписей с новый порядком 
-                audiosList = vk.Audio.GetFromGroup((long)group.Id, null, null, 0, 0);
+                audiosList = group != null ?
+                    vk.Audio.GetFromGroup(group.Id, null, null, 0, 0) :
+                    vk.Audio.Get(user.Id, null, null, null, null);
                 MessageBox.Show("Альбом поднят");
             }
             catch
